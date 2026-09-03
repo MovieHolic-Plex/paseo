@@ -255,6 +255,15 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     defaultModeId: "full",
     modes: OMP_MODES,
   },
+  {
+    id: "omo",
+    label: "Omo",
+    description: "Pi-compatible coding agent with skills, subagents, and persistent memory",
+    // Omo drives the same RPC surface as Pi, which reports its permission modes
+    // dynamically instead of shipping a static list.
+    defaultModeId: null,
+    modes: [],
+  },
 ];
 
 export const DEV_AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
