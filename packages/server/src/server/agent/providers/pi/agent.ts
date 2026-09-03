@@ -66,6 +66,7 @@ import {
 import { materializeProviderImage } from "../provider-image-output.js";
 import { PiCliRuntime } from "./cli-runtime.js";
 import { revertPiConversation } from "./rewind.js";
+import { PI_PROVIDER_IDENTITY, type PiCompatibleProviderIdentity } from "./provider-identity.js";
 import { listPiImportableSessions, readPiImportSessionConfig } from "./session-descriptor.js";
 import type { PiRuntime, PiRuntimeSession, PiStartSessionInput } from "./runtime.js";
 import type {
@@ -88,9 +89,7 @@ import {
   type PiTrackedToolCall,
 } from "./tool-call-mapper.js";
 
-const PI_PROVIDER = "pi";
 const DEFAULT_PI_THINKING_LEVEL: PiThinkingLevel = "medium";
-const PI_BINARY_COMMAND = process.env.PI_COMMAND ?? process.env.PI_ACP_PI_COMMAND ?? "pi";
 const PASEO_PI_TREE_EXTENSION_COMMAND = "paseo_tree";
 const PASEO_PI_CAPTURE_EXTENSION_COMMAND = "paseo_capture_entries";
 const PASEO_PI_ENTRY_CAPTURE_MARKER = "PASEO_ENTRY_CAPTURE";
@@ -187,6 +186,8 @@ export interface PiRpcAgentClientOptions {
   runtimeSettings?: ProviderRuntimeSettings;
   providerParams?: unknown;
   runtime?: PiRuntime;
+  /** Defaults to Pi; sibling agents speaking the same RPC pass their own identity. */
+  identity?: PiCompatibleProviderIdentity;
   usagePollScheduler?: PiUsagePollScheduler;
 }
 
@@ -244,6 +245,7 @@ interface PiRpcAgentSessionOptions {
   cleanup?: () => void;
   extensionTimeoutMs?: number;
   logger: Logger;
+  identity?: PiCompatibleProviderIdentity;
   usagePollScheduler?: PiUsagePollScheduler;
 }
 
@@ -545,10 +547,13 @@ function toPiMcpConfig(config: McpServerConfig): PiMcpServerConfig {
   };
 }
 
-function resolvePiAgentDir(env: Record<string, string> | undefined): string {
+function resolvePiAgentDir(
+  env: Record<string, string> | undefined,
+  identity: PiCompatibleProviderIdentity = PI_PROVIDER_IDENTITY,
+): string {
   const configured = env?.PI_CODING_AGENT_DIR?.trim() || process.env.PI_CODING_AGENT_DIR?.trim();
   if (!configured) {
-    return join(homedir(), ".pi", "agent");
+    return join(homedir(), identity.configDirName, "agent");
   }
   if (configured === "~") {
     return homedir();
@@ -938,8 +943,8 @@ function mapExtensionUiRequestToPermission(
   event: Extract<PiRuntimeEvent, { type: "extension_ui_request" }>,
   options: ExtensionUiMappingOptions = {},
 ): AgentPermissionRequest | null {
-  const provider = options.provider ?? PI_PROVIDER;
-  const label = options.label ?? "Pi";
+  const provider = options.provider ?? PI_PROVIDER_IDENTITY.provider;
+  const label = options.label ?? PI_PROVIDER_IDENTITY.label;
   switch (event.method) {
     case "select": {
       const selectOptions = readStringArray(event.options);
@@ -1207,11 +1212,12 @@ function createRuntime(
   logger: Logger,
   runtimeSettings: ProviderRuntimeSettings | undefined,
   requestTimeoutMs: number,
+  identity: PiCompatibleProviderIdentity,
 ): PiRuntime {
   return new PiCliRuntime({
     logger,
     runtimeSettings,
-    command: [PI_BINARY_COMMAND],
+    command: [identity.defaultBinary],
     commandsRpcName: "get_commands",
     requestTimeoutMs,
   });
@@ -1249,6 +1255,7 @@ export class PiRpcAgentSession implements AgentSession {
   private state: PiSessionState;
   private readonly currentModeId: string | null;
   private readonly logger: Logger;
+  private readonly identity: PiCompatibleProviderIdentity;
   private readonly usagePoller: PiUsagePoller;
   private closed = false;
   // Pi reports an aborted OpenAI Responses stream before the abort RPC resolves.
@@ -1262,7 +1269,8 @@ export class PiRpcAgentSession implements AgentSession {
     this.config = options.config;
     this.state = options.initialState;
     this.capabilities = options.capabilities;
-    this.provider = PI_PROVIDER;
+    this.identity = options.identity ?? PI_PROVIDER_IDENTITY;
+    this.provider = this.identity.provider;
     this.currentModeId = options.currentModeId ?? null;
     this.cleanup = options.cleanup;
     this.lastKnownThinkingOptionId =
@@ -2046,7 +2054,7 @@ export class PiRpcAgentSession implements AgentSession {
       this.activeAskUserDialog.allowMultiple === false;
     const request = mapExtensionUiRequestToPermission(event, {
       provider: this.provider,
-      label: "Pi",
+      label: this.identity.label,
       combineOptionalComment: shouldCombineOptionalComment,
       allowFreeform: this.activeAskUserDialog?.allowFreeform,
     });
@@ -2500,17 +2508,24 @@ export class PiRpcAgentClient implements AgentClient {
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly providerParams: PiProviderParams;
   private readonly runtime: PiRuntime;
+  private readonly identity: PiCompatibleProviderIdentity;
   private readonly usagePollScheduler?: PiUsagePollScheduler;
 
   constructor(options: PiRpcAgentClientOptions) {
-    this.provider = PI_PROVIDER;
+    this.identity = options.identity ?? PI_PROVIDER_IDENTITY;
+    this.provider = this.identity.provider;
     this.capabilities = capabilitiesForClient();
     this.logger = options.logger;
     this.runtimeSettings = options.runtimeSettings;
     this.providerParams = PiProviderParamsSchema.parse(options.providerParams ?? {});
     this.runtime =
       options.runtime ??
-      createRuntime(options.logger, options.runtimeSettings, this.providerParams.rpcTimeoutMs);
+      createRuntime(
+        options.logger,
+        options.runtimeSettings,
+        this.providerParams.rpcTimeoutMs,
+        this.identity,
+      );
     this.usagePollScheduler = options.usagePollScheduler;
   }
 
@@ -2551,6 +2566,7 @@ export class PiRpcAgentClient implements AgentClient {
         capabilities: capabilitiesForSession(mcpConfig !== null),
         cleanup: combineCleanup([mcpConfig?.cleanup, paseoExtension?.cleanup]),
         extensionTimeoutMs: this.providerParams.extensionTimeoutMs,
+        identity: this.identity,
         logger: this.logger,
         usagePollScheduler: this.usagePollScheduler,
       });
@@ -2614,6 +2630,7 @@ export class PiRpcAgentClient implements AgentClient {
         capabilities: capabilitiesForSession(mcpConfig !== null),
         cleanup: combineCleanup([mcpConfig?.cleanup, paseoExtension?.cleanup]),
         extensionTimeoutMs: this.providerParams.extensionTimeoutMs,
+        identity: this.identity,
         logger: this.logger,
         usagePollScheduler: this.usagePollScheduler,
       });
@@ -2653,7 +2670,7 @@ export class PiRpcAgentClient implements AgentClient {
           await runProviderRefreshActivity(context, "get_available_models", () =>
             catalogSession.getAvailableModels(null),
           )
-        ).map((model) => mapPiModel(model, PI_PROVIDER)),
+        ).map((model) => mapPiModel(model, this.identity.provider)),
       );
       return { models, modes: [] };
     } finally {
@@ -2673,6 +2690,7 @@ export class PiRpcAgentClient implements AgentClient {
       ...options,
       sessionDir: this.providerParams.sessionDir,
       runtimeSettings: this.runtimeSettings,
+      configDirName: this.identity.configDirName,
     });
   }
 
@@ -2701,16 +2719,16 @@ export class PiRpcAgentClient implements AgentClient {
     try {
       const launch = await this.resolvePiLaunch();
       const availability = await checkProviderLaunchAvailable(launch);
-      const authConfigPath = join(homedir(), ".pi", "agent", "auth.json");
+      const authConfigPath = join(homedir(), this.identity.configDirName, "agent", "auth.json");
 
       return {
-        diagnostic: formatProviderDiagnostic("Pi", [
+        diagnostic: formatProviderDiagnostic(this.identity.label, [
           ...(await buildCommandResolutionDiagnosticRows(launch, {
             knownBinaryNames: [launch.command],
           })),
           ...(await buildBinaryDiagnosticRows(launch, availability)),
           {
-            label: "Auth config (~/.pi/agent/auth.json)",
+            label: `Auth config (~/${this.identity.configDirName}/agent/auth.json)`,
             value: existsSync(authConfigPath) ? "found" : "not found",
           },
         ]),
@@ -2718,7 +2736,7 @@ export class PiRpcAgentClient implements AgentClient {
     } catch (error) {
       this.logger.debug({ err: error }, "Pi diagnostic lookup failed");
       return {
-        diagnostic: formatProviderDiagnosticError("Pi", error),
+        diagnostic: formatProviderDiagnosticError(this.identity.label, error),
       };
     }
   }
@@ -2758,7 +2776,7 @@ export class PiRpcAgentClient implements AgentClient {
   private async resolvePiLaunch(): Promise<ResolvedProviderLaunch> {
     return resolveProviderLaunch({
       commandConfig: this.runtimeSettings?.command,
-      defaultBinary: PI_BINARY_COMMAND,
+      defaultBinary: this.identity.defaultBinary,
     });
   }
 }

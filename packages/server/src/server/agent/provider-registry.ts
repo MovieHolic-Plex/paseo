@@ -46,6 +46,7 @@ import type { OpenCodeBridge } from "./providers/opencode/bridge.js";
 import { OmpAgentClient } from "./providers/omp/agent.js";
 import type { OmpRuntime } from "./providers/omp/runtime.js";
 import { PiRpcAgentClient } from "./providers/pi/agent.js";
+import { OMO_PROVIDER_IDENTITY } from "./providers/pi/provider-identity.js";
 import { TraeACPAgentClient } from "./providers/trae-acp-agent.js";
 import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
 import { MockSlowProviderClient } from "./providers/mock-slow-provider.js";
@@ -222,6 +223,13 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       logger,
       runtimeSettings,
       providerParams: options?.providerParams,
+    }),
+  omo: (logger, runtimeSettings, options) =>
+    new PiRpcAgentClient({
+      logger,
+      runtimeSettings,
+      providerParams: options?.providerParams,
+      identity: OMO_PROVIDER_IDENTITY,
     }),
   omp: (logger, runtimeSettings, options) =>
     new OmpAgentClient({
