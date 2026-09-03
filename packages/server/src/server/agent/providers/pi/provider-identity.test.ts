@@ -1,7 +1,10 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
-import { PiRpcAgentClient } from "./agent.js";
+import { PiRpcAgentClient, readPiGlobalMcpConfig } from "./agent.js";
 import { OMO_PROVIDER_IDENTITY, PI_PROVIDER_IDENTITY } from "./provider-identity.js";
 
 describe("Pi-compatible provider identity", () => {
@@ -43,5 +46,23 @@ describe("Pi-compatible provider identity", () => {
 
     expect(diagnostic).toContain("~/.pi/agent/auth.json");
     expect(diagnostic).toContain("Binary: pi");
+  });
+
+  test("omo MCP merge reads omo's global config, not pi's", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "omo-mcp-"));
+    const piAgentDir = path.join(root, ".pi", "agent");
+    await mkdir(piAgentDir, { recursive: true });
+    await writeFile(
+      path.join(piAgentDir, "mcp.json"),
+      JSON.stringify({ mcpServers: { "pi-only": { command: "pi-only-server" } } }),
+      "utf8",
+    );
+
+    const config = readPiGlobalMcpConfig(
+      { PI_CODING_AGENT_DIR: piAgentDir },
+      OMO_PROVIDER_IDENTITY,
+    );
+
+    expect(config).toEqual({});
   });
 });

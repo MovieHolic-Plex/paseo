@@ -565,8 +565,11 @@ function resolvePiAgentDir(
   return resolvePath(configured);
 }
 
-function readPiGlobalMcpConfig(env: Record<string, string> | undefined): Record<string, unknown> {
-  const globalConfigPath = join(resolvePiAgentDir(env), "mcp.json");
+export function readPiGlobalMcpConfig(
+  env: Record<string, string> | undefined,
+  identity: PiCompatibleProviderIdentity = PI_PROVIDER_IDENTITY,
+): Record<string, unknown> {
+  const globalConfigPath = join(resolvePiAgentDir(env, identity), "mcp.json");
   if (!existsSync(globalConfigPath)) {
     return {};
   }
@@ -590,10 +593,11 @@ function createPiMcpConfigFile(
   servers: Record<string, McpServerConfig>,
   options?: {
     piGlobalConfigEnv?: Record<string, string>;
+    identity?: PiCompatibleProviderIdentity;
   },
 ): PiMcpConfigFile {
   const globalConfig = options?.piGlobalConfigEnv
-    ? readPiGlobalMcpConfig(options.piGlobalConfigEnv)
+    ? readPiGlobalMcpConfig(options.piGlobalConfigEnv, options.identity)
     : {};
   let configuredServers: Record<string, unknown> = {};
   if (isRecord(globalConfig.mcpServers)) {
@@ -2755,7 +2759,7 @@ export class PiRpcAgentClient implements AgentClient {
     if (!(await this.detectMcpAdapter(cwd, env))) {
       return null;
     }
-    return createPiMcpConfigFile(servers, { piGlobalConfigEnv: env });
+    return createPiMcpConfigFile(servers, { piGlobalConfigEnv: env, identity: this.identity });
   }
 
   private async detectMcpAdapter(cwd: string, env?: Record<string, string>): Promise<boolean> {
