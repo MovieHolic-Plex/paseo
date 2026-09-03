@@ -58,11 +58,17 @@ describe("Pi-compatible provider identity", () => {
       "utf8",
     );
 
+    // Point omo's own env var at an empty agent dir so the assertion cannot depend
+    // on whether a real ~/.omo/agent/mcp.json happens to exist on the host.
+    const omoAgentDir = path.join(root, ".omo", "agent");
+    await mkdir(omoAgentDir, { recursive: true });
+
     const config = readPiGlobalMcpConfig(
-      { PI_CODING_AGENT_DIR: piAgentDir },
+      { PI_CODING_AGENT_DIR: piAgentDir, OMO_CODING_AGENT_DIR: omoAgentDir },
       OMO_PROVIDER_IDENTITY,
     );
 
+    // omo must read OMO_CODING_AGENT_DIR (empty -> {}), never pi's populated dir.
     expect(config).toEqual({});
   });
 });
