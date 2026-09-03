@@ -26,6 +26,9 @@ export const PROVIDER_COMMAND_TEMPLATES: Record<
   omp: {
     resume: "omp --session {sessionId}",
   },
+  omo: {
+    resume: "omo --session {sessionId}",
+  },
   opencode: {
     resume: "opencode --session {sessionId}",
   },
