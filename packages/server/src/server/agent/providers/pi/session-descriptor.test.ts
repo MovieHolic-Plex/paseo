@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
 
+import { OMO_PROVIDER_IDENTITY } from "./provider-identity.js";
 import { listPiImportableSessions, readPiImportSessionConfig } from "./session-descriptor.js";
 
 async function writeSession(root: string, lines: unknown[]): Promise<string> {
@@ -215,4 +216,22 @@ test("Pi import config preserves thinking before a later model in large sessions
     model: "openrouter/google/gemini-2.5-pro",
     thinkingOptionId: "low",
   });
+});
+
+test("omo session discovery ignores pi's agent-dir env var", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "omo-env-"));
+  const piAgentDir = path.join(root, "pi-agent");
+  await writeSession(piAgentDir, [
+    { type: "session", id: "pi-session", cwd: root, timestamp: "2026-06-09T00:00:00.000Z" },
+  ]);
+
+  const sessions = await listPiImportableSessions({
+    configDirName: OMO_PROVIDER_IDENTITY.configDirName,
+    agentDirEnv: OMO_PROVIDER_IDENTITY.agentDirEnv,
+    sessionDirEnv: OMO_PROVIDER_IDENTITY.sessionDirEnv,
+    homeDir: root,
+    env: { PI_CODING_AGENT_DIR: piAgentDir } as NodeJS.ProcessEnv,
+  });
+
+  expect(sessions).toEqual([]);
 });

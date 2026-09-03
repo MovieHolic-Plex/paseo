@@ -551,7 +551,8 @@ function resolvePiAgentDir(
   env: Record<string, string> | undefined,
   identity: PiCompatibleProviderIdentity = PI_PROVIDER_IDENTITY,
 ): string {
-  const configured = env?.PI_CODING_AGENT_DIR?.trim() || process.env.PI_CODING_AGENT_DIR?.trim();
+  const configured =
+    env?.[identity.agentDirEnv]?.trim() || process.env[identity.agentDirEnv]?.trim();
   if (!configured) {
     return join(homedir(), identity.configDirName, "agent");
   }
@@ -2691,6 +2692,8 @@ export class PiRpcAgentClient implements AgentClient {
       sessionDir: this.providerParams.sessionDir,
       runtimeSettings: this.runtimeSettings,
       configDirName: this.identity.configDirName,
+      agentDirEnv: this.identity.agentDirEnv,
+      sessionDirEnv: this.identity.sessionDirEnv,
     });
   }
 

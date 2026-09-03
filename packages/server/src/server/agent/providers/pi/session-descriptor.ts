@@ -29,6 +29,10 @@ interface PiSessionDescriptorOptions extends ListImportableSessionsOptions {
   homeDir?: string;
   /** Home-relative config directory of the Pi-compatible agent, e.g. ".pi" or ".omo". */
   configDirName?: string;
+  /** Env var overriding the agent directory; defaults to Pi's. */
+  agentDirEnv?: string;
+  /** Env var overriding the sessions directory; defaults to Pi's. */
+  sessionDirEnv?: string;
 }
 
 interface PiSessionHeader {
@@ -118,15 +122,17 @@ async function resolvePiSessionsDir(options: PiSessionDescriptorOptions): Promis
   }
 
   const configDirName = options.configDirName ?? PI_CONFIG_DIR_NAME;
+  const agentDirEnv = options.agentDirEnv ?? PI_AGENT_DIR_ENV;
+  const sessionDirEnv = options.sessionDirEnv ?? PI_SESSION_DIR_ENV;
   const agentDir = resolvePiAgentDir({
     runtimeSettings: options.runtimeSettings,
     env,
     homeDir,
     configDirName,
+    agentDirEnv,
   });
 
-  const envSessionDir =
-    options.runtimeSettings?.env?.[PI_SESSION_DIR_ENV] ?? env[PI_SESSION_DIR_ENV];
+  const envSessionDir = options.runtimeSettings?.env?.[sessionDirEnv] ?? env[sessionDirEnv];
   if (envSessionDir?.trim()) {
     return resolveConfigPath(envSessionDir, { baseDir, homeDir });
   }
@@ -148,8 +154,10 @@ function resolvePiAgentDir(input: {
   env: NodeJS.ProcessEnv;
   homeDir: string;
   configDirName?: string;
+  agentDirEnv?: string;
 }): string {
-  const configured = input.runtimeSettings?.env?.[PI_AGENT_DIR_ENV] ?? input.env[PI_AGENT_DIR_ENV];
+  const agentDirEnv = input.agentDirEnv ?? PI_AGENT_DIR_ENV;
+  const configured = input.runtimeSettings?.env?.[agentDirEnv] ?? input.env[agentDirEnv];
   if (configured?.trim()) {
     return resolveConfigPath(configured, { baseDir: process.cwd(), homeDir: input.homeDir });
   }
